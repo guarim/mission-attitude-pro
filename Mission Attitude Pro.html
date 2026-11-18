@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mission Attitude Pro</title>
+<style>
+:root{--bg:#f4efe6;--fg:#1f2430;--card:#fffdf8;--mut:#6b7280;--line:#d9d2c3;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171f;--fg:#eceff4;--card:#222736;--mut:#9aa3b5;--line:#343b50}}
+:root[data-theme="dark"]{--bg:#14171f;--fg:#eceff4;--card:#222736;--mut:#9aa3b5;--line:#343b50}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+#top{position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);padding:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;pointer-events:none}
+.chip{background:var(--card);border:2px solid var(--line);border-left:8px solid var(--c);border-radius:10px;padding:4px 9px;font-size:13px}
+.chip.on{border-color:var(--c);box-shadow:0 0 0 2px var(--c)}
+.leg{font-size:12px;color:var(--mut);width:100%}
+#bar{position:fixed;left:0;right:0;bottom:env(safe-area-inset-bottom,0px);padding:12px;text-align:center}
+#msg{margin-bottom:8px;font-weight:600}
+button{font:inherit;cursor:pointer}
+#roll{background:#f2c200;color:#222;border:0;border-radius:999px;padding:12px 30px;font-weight:700;font-size:17px;box-shadow:0 3px 0 #b08d00}
+#roll:disabled{opacity:.45}
+#ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:12px;overflow:auto}
+.card{width:min(94vw,370px);background:var(--card);border:3px solid var(--c);border-radius:16px;overflow:hidden;animation:fl .4s;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+@keyframes fl{from{transform:rotateY(90deg)}}
+.hd{background:var(--c);color:#fff;padding:9px 14px;font-weight:700;display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.bd{padding:14px}.tag{font-size:11px;letter-spacing:.06em;color:var(--mut)}
+.q{font-size:17px;margin:6px 0 12px;font-weight:600}
+.opt{display:block;width:100%;text-align:left;margin:6px 0;padding:10px;border-radius:10px;border:2px solid var(--line);background:transparent;color:var(--fg)}
+.opt:not([disabled]):hover{border-color:var(--c)}
+.ok{border-color:#2e9e5b;background:rgba(46,158,91,.18)}.ko{border-color:#d64545;background:rgba(214,69,69,.18)}.dim{opacity:.5}
+.jury{border-top:2px dashed var(--line);margin-top:12px;padding-top:10px;font-size:14px}
+.g{color:#2e9e5b}.r{color:#d64545}
+.go{margin-top:10px;width:100%;background:var(--c);color:#fff;border:0;border-radius:10px;padding:11px;font-weight:700}
+.ft{margin-top:12px}
+</style></head><body>
+<div id="top"><div id="pl" style="display:contents"></div>
+<div class="leg">⏰ Organisation (orange) · 💬 Communication (vert) · 👤 Posture &amp; attitude (violet) · ⛑️ Sécurité (bleu) · ⚡ Événement · 🔍 Tuteur</div></div>
+<div id="bar"><div id="msg"></div><button id="roll" disabled>🎲 Lancer le dé</button></div>
+<div id="ov"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const Z=[{n:"Organisation",c:"#f08a24",i:"⏰"},{n:"Communication",c:"#3aa655",i:"💬"},{n:"Posture & attitude",c:"#8a4fc7",i:"👤"},{n:"Sécurité & droit",c:"#2f7fd6",i:"⛑️"}];
+const shuf=a=>a.map(x=>[Math.random(),x]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+// Cartes : [situation, [bonne réponse, mauvaises…], explication, (tag Vrai/Faux)]
+const C=[[
+["Le bus a 20 minutes de retard : tu arriveras avec 15 minutes de retard à ton stage.",["Tu préviens tout de suite le tuteur et tu donnes ton heure d’arrivée.","Tu arrives sans rien dire en espérant que ça passe.","Tu t’expliques une fois arrivé."],"On prévient avant, de façon précise : le tuteur peut s’organiser."],
+["Tu as fini ta tâche en avance et personne ne te donne autre chose à faire.",["Tu demandes la tâche suivante ou tu proposes ton aide.","Tu sors ton téléphone.","Tu pars plus tôt."],"C’est de l’initiative : on n’attend pas qu’on nous dise quoi faire."],
+["On te donne trois tâches en même temps : un client qui attend, une commande à préparer, ton poste à nettoyer.",["Tu demandes « Par laquelle je commence ? » en énonçant tes priorités.","Tu choisis au hasard.","Tu en fais deux et tu oublies la troisième."],"Quand tout semble urgent, on énonce ses priorités et on demande : cela évite les oublis."],
+["Tu as un rendez-vous médical pendant un jour de stage.",["Tu préviens le tuteur dès que tu connais la date et tu apportes le justificatif.","Tu ne viens pas et tu t’expliques après.","Tu préviens le matin même."],"On prévient tôt pour que l’entreprise s’organise, puis on justifie l’absence."],
+["Tu ne sais pas où ranger du matériel.",["Tu demandes au tuteur où ça se range.","Tu le poses dans un coin.","Tu le laisses sur ton poste."],"Poser la question évite les erreurs et montre ton sérieux."]
+],[
+["Tu n’as pas compris la consigne du tuteur, qui est pressé.",["Tu reformules : « Si j’ai bien compris, je dois… ».","Tu fais comme tu penses.","Tu n’oses rien dire."],"La reformulation vérifie que l’on a compris, sans faire perdre de temps."],
+["Un client mécontent élève la voix.",["Tu l’écoutes sans l’interrompre, tu reformules, tu appelles ton tuteur si tu ne peux pas décider.","Tu réponds sur le même ton.","Tu t’éloignes."],"Écouter, reformuler, puis passer le relais quand on n’a pas le pouvoir de décider."],
+["Tu dois annoncer au tuteur que tu as fait une erreur dans une commande.",["Tu le dis tout de suite, simplement, et tu proposes une réparation.","Tu attends de voir si ça se remarque.","Tu accuses un collègue."],"Règle des 3 R : Reconnaître, Réparer, Rassurer."],
+["Un collègue plus âgé te parle de façon sèche et tu te sens mal à l’aise.",["Tu lui en parles calmement et, si ça se répète, tu préviens le tuteur ou ton référent.","Tu réponds sur le même ton.","Tu en parles à tout le monde sauf à lui."],"On parle d’abord calmement ; des propos humiliants ou répétés se signalent à un adulte référent."],
+["Le tuteur te fait une remarque sur ton travail.",["Tu écoutes, tu remercies et tu corriges.","Tu te justifies sans arrêt.","Tu boudes."],"Accepter une critique, c’est montrer que l’on veut progresser."]
+],[
+["Pendant le briefing, ton téléphone vibre.",["Il était en silencieux ; si tu attends un appel urgent, tu préviens avant.","Tu le regardes.","Tu réponds discrètement."],"Le téléphone se règle avant le briefing. Une urgence se prévient en amont."],
+["On te confie une tâche répétitive alors que tu espérais pratiquer ton métier.",["Tu fais avec soin, puis tu demandes quand tu pourras essayer autre chose.","Tu râles.","Tu fais vite et mal."],"Faire avec soin montre ta fiabilité ; demander la suite montre ta motivation."],
+["Un collègue en situation de handicap moteur a besoin d’aide pour accéder à un rayonnage.",["Tu proposes : « Veux-tu que… ? », tu écoutes et tu respectes son choix.","Tu fais à sa place sans demander.","Tu passes ton chemin."],"On propose son aide sans décider à la place de l’autre."],
+["Tu es la seule fille (ou le seul garçon) de l’équipe. On fait une « blague » déplacée sur toi.",["Tu dis calmement que ça ne te convient pas ; si ça recommence, tu préviens le tuteur ou ton référent.","Tu ris pour éviter les histoires.","Tu quittes le stage sans rien dire."],"Une « blague » déplacée n’est pas normale : on le dit, puis on alerte un adulte si ça recommence."],
+["Premier jour de stage : comment te présentes-tu ?",["À l’heure, en tenue adaptée, tu te présentes poliment.","En avance de 1 h, sans prévenir.","Avec un casque audio sur les oreilles."],"Ponctualité, tenue et politesse construisent la première impression."]
+],[
+["Il fait chaud, ton casque ou tes gants te gênent.",["Tu les gardes et tu demandes une pause ou un ajustement.","Tu les retires « juste deux minutes ».","Tu les poses à côté de toi."],"L’équipement de protection reste en place. Demander un ajustement est toujours possible."],
+["Un collègue te demande d’utiliser une machine pour laquelle tu n’as pas été formé : « C’est facile, vas-y ».",["Tu dis que tu n’as pas été formé et tu demandes une démonstration ou une autre tâche.","Tu essaies.","Tu regardes une vidéo et tu te lances."],"Dire « je n’ai pas été formé » est un réflexe sécurité. Pour un mineur, certaines machines sont interdites."],
+["Tu te coupes légèrement, mais tu ne veux pas faire de bruit.",["Tu préviens immédiatement le tuteur pour les soins et la déclaration.","Tu caches la coupure.","Tu le dis le lendemain."],"Tout accident, même léger, se signale tout de suite : soins et déclaration."],
+["On te demande de porter des charges lourdes sans les équipements de protection fournis.",["Tu refuses poliment en citant la consigne de sécurité et tu alertes le tuteur.","Tu portes quand même.","Tu portes en serrant les dents."],"Chaque travailleur doit prendre soin de sa santé et de sa sécurité (art. L4122-1) : on alerte."],
+["Tu remarques un sol mouillé dans l’atelier.",["Tu signales et sécurises la zone, puis tu préviens le tuteur.","Tu fais comme si tu n’avais rien vu.","Tu l’essuies sans rien dire."],"D’abord éviter qu’on tombe, ensuite prévenir."],
+["Un stagiaire de 17 ans peut travailler 9 h dans la journée.",["FAUX","VRAI"],"Maximum 8 h par jour et 35 h par semaine pour les moins de 18 ans (art. L. 3162-1). À valider avant diffusion.","§ DROIT · VRAI OU FAUX ?"],
+["Après 4 h 30 de travail, un jeune de moins de 18 ans a droit à une pause.",["VRAI","FAUX"],"Une pause d’au moins 30 minutes consécutives. À valider avant diffusion.","§ DROIT · VRAI OU FAUX ?"]
+]];
+// Événements : [bonus?, titre, texte, ΔPAP, Δcases]
+const E=[[1,"Bravo !","Tu as prévenu ton tuteur de ton léger retard en amont, en expliquant la situation.",0,2],[1,"Aide demandée à temps","Tu as demandé de l’aide avant de faire l’erreur.",2,0],[1,"Idée d’amélioration","Tu as proposé une idée utile au tuteur.",1,0],[1,"Coup de main","Tu as aidé un collègue en difficulté.",1,1],[0,"Attention !","Tu as utilisé ton téléphone personnel sur un poste de sécurité.",0,-2],[0,"Retard sans prévenir","Tu arrives en retard sans avoir prévenu personne.",-1,-1],[0,"EPI retiré « deux minutes »","Tu retires ton casque ou tes gants « juste deux minutes ».",-2,0],[0,"Consigne mal comprise","Tu n’as pas osé poser de question : le travail est à refaire.",-1,0],[0,"« Ce n’est pas mon travail »","Tu refuses une tâche en disant que ce n’est pas ton rôle.",-1,-1]];
+const D=[[],[],[],[]],draw=z=>{if(!D[z].length)D[z]=shuf(C[z]);return D[z].pop()};
+const kind=n=>[5,15,25,35].includes(n)?"ev":[10,20,30].includes(n)?"tu":n==40?"fin":"th";
+const tp=n=>{if(n<1)return[-6.3,-1.95];const r=((n-1)/10)|0,c0=(n-1)%10,c=r%2?9-c0:c0;return[(c-4.5)*1.1,(r-1.5)*1.3]};
+const OFF=[[-.22,-.22],[.22,-.22],[-.22,.22],[.22,.22]];
+// ---------- WebGL ----------
+const R=new THREE.WebGLRenderer({antialias:true,alpha:true});R.setPixelRatio(Math.min(devicePixelRatio,2));document.body.prepend(R.domElement);
+const S=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1,.1,200);
+S.add(new THREE.HemisphereLight(0xffffff,0x8899aa,.95));const dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(4,10,6);S.add(dl);
+function fit(){const w=innerWidth,h=innerHeight;R.setSize(w,h);cam.aspect=w/h;const d=Math.max(11,15/cam.aspect);cam.position.set(-.3,d*.8,d*.6+1);cam.lookAt(-.3,0,.4);cam.updateProjectionMatrix()}
+addEventListener("resize",fit);fit();
+function tex(bg,t,sub){const c=document.createElement("canvas");c.width=c.height=128;const x=c.getContext("2d");x.fillStyle=bg;x.fillRect(0,0,128,128);x.strokeStyle="rgba(255,255,255,.55)";x.lineWidth=6;x.strokeRect(5,5,118,118);x.fillStyle="#fff";x.textAlign="center";x.textBaseline="middle";x.font="bold "+(t.length>3?24:38)+"px system-ui";x.fillText(t,64,30);x.font="50px system-ui";x.fillText(sub,64,82);return new THREE.CanvasTexture(c)}
+const M=c=>new THREE.MeshStandardMaterial({color:c,roughness:.55});
+const slab=new THREE.Mesh(new THREE.BoxGeometry(13.4,.15,6.3),M(0x2b2f3a));slab.position.set(-.3,-.05,0);S.add(slab);
+for(let n=0;n<=40;n++){const k=n?kind(n):"st",z=n>39?3:n?((n-1)/10)|0:0;
+ let bg=Z[z].c,ic=Z[z].i;if(k=="ev"){bg="#d94f4f";ic="⚡"}if(k=="tu"){bg="#26325c";ic="🔍"}if(k=="fin"){bg="#d4a017";ic="🏁"}if(k=="st"){bg="#666";ic="▶"}
+ const side=M(new THREE.Color(bg).multiplyScalar(.6));
+ const m=new THREE.Mesh(new THREE.BoxGeometry(1,.2,1),[side,side,new THREE.MeshStandardMaterial({map:tex(bg,n?String(n):"DÉPART",ic)}),side,side,side]);
+ const [x,zz]=tp(n);m.position.set(x,.1,zz);S.add(m)}
+function mk(i,col){const g=new THREE.Group();
+ const add=(geo,c,x,y,z)=>{const o=new THREE.Mesh(geo,M(c));o.position.set(x,y,z);g.add(o);return o};
+ add(new THREE.CylinderGeometry(.22,.26,.1,24),col,0,.05,0);
+ if(i==0){add(new THREE.SphereGeometry(.2,20,12,0,6.283,0,1.57),0xffd400,0,.1,0);add(new THREE.CylinderGeometry(.27,.27,.03,24),0xffd400,0,.1,0)}
+ if(i==1){add(new THREE.BoxGeometry(.4,.2,.28),0xdddddd,0,.28,0);add(new THREE.BoxGeometry(.04,.04,.3),0x555555,-.24,.45,0);add(new THREE.SphereGeometry(.05,8,8),0x222222,.12,.14,0);add(new THREE.SphereGeometry(.05,8,8),0x222222,-.12,.14,0)}
+ if(i==2){add(new THREE.CylinderGeometry(.15,.17,.3,20),0xffffff,0,.25,0);add(new THREE.BoxGeometry(.24,.07,.07),0xd62828,0,.3,.17);add(new THREE.BoxGeometry(.07,.24,.07),0xd62828,0,.3,.17)}
+ if(i==3){add(new THREE.CylinderGeometry(.14,.16,.22,20),0xffffff,0,.21,0);add(new THREE.SphereGeometry(.2,16,12),0xffffff,0,.45,0)}
+ S.add(g);return g}
+// dé 1-3
+const dtex=n=>{const c=document.createElement("canvas");c.width=c.height=128;const x=c.getContext("2d");x.fillStyle="#f2c200";x.fillRect(0,0,128,128);x.fillStyle="#222";x.font="bold 80px system-ui";x.textAlign="center";x.textBaseline="middle";x.fillText(n,64,68);return new THREE.CanvasTexture(c)};
+const die=new THREE.Mesh(new THREE.BoxGeometry(.9,.9,.9),[1,2,3,1,2,3].map(n=>new THREE.MeshStandardMaterial({map:dtex(n)})));die.position.set(-.3,.5,3.7);S.add(die);
+const anim=(ms,f)=>new Promise(r=>{const t0=performance.now();(function s(){const t=Math.min(1,(performance.now()-t0)/ms);f(t);t<1?requestAnimationFrame(s):r()})()});
+async function roll(){const v=1+(Math.random()*3|0),tg={1:[Math.PI,0,0],2:[-Math.PI/2,0,0],3:[0,0,0]}[v],s=[Math.random()*9,Math.random()*9,Math.random()*9];
+ await anim(1100,t=>{const k=(1-t)*(1-t);die.rotation.set(tg[0]+s[0]*k,tg[1]+s[1]*k,tg[2]+s[2]*k);die.position.y=.5+Math.abs(Math.sin(t*9))*(1-t)*1.3});return v}
+// ---------- Jeu ----------
+const info=[["BTP / Industrie",0xe63946],["Vente",0x1d9bf0],["Aide à la personne",0x2ec4b6],["Restauration",0xf4a261]];
+const P=info.map(([n,c],i)=>({i,n:"J"+(i+1)+" · "+n,col:"#"+c.toString(16).padStart(6,"0"),pap:5,pos:0,g:mk(i,c)}));
+let cur=0,idle=false;
+const place=p=>{const[a,b]=tp(p.pos);p.g.position.set(a+OFF[p.i][0],.2,b+OFF[p.i][1])};P.forEach(place);
+(function loop(t){requestAnimationFrame(loop);t/=1000;P.forEach(p=>{p.g.rotation.y+=.01;if(idle)p.g.position.y=.2+(p.i==cur?Math.abs(Math.sin(t*3))*.14:0)});R.render(S,cam)})(0);
+async function hop(p,n){const a=tp(p.pos),b=tp(n),o=OFF[p.i];await anim(260,t=>p.g.position.set(a[0]+(b[0]-a[0])*t+o[0],.2+Math.sin(t*Math.PI)*.45,a[1]+(b[1]-a[1])*t+o[1]));p.pos=n}
+async function go(p,to){to=Math.max(1,Math.min(40,to));while(p.pos!=to)await hop(p,p.pos+Math.sign(to-p.pos));hud()}
+function hud(){$("#pl").innerHTML=P.map(p=>`<div class="chip ${p.i==cur?"on":""}" style="--c:${p.col}"><b>${p.n}</b> · ${p.pap} PAP · ${p.pos?"case "+p.pos:"départ"}</div>`).join("")}
+const ov=$("#ov");
+const choose=h=>new Promise(r=>{ov.innerHTML=h;ov.style.display="flex";ov.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{ov.style.display="none";r(b.dataset.v)})});
+const card=(c,hd,tag,q,body,foot)=>`<div class="card" style="--c:${c}"><div class="hd"><span>${hd}</span><span>MISSION ATTITUDE PRO</span></div><div class="bd"><div class="tag">${tag}</div><p class="q">${q}</p>${body}<div class="tag ft">${foot}</div></div></div>`;
+async function question(p,z){const c=draw(z),tag=c[3]||"QCM · QUE FAIS-TU ?";
+ let o=c[1].map((t,i)=>[t,i==0?1:0]);o=c[3]?o.sort((a,b)=>a[0]<b[0]?1:-1):shuf(o);
+ const hd=Z[z].i+" "+Z[z].n,foot=`${P[(p.i+1)%4].n.split(" · ")[0]} lit la carte à voix haute · ${p.n.split(" · ")[0]} répond`;
+ const b=(i,x,s)=>`<button class="opt ${s||""}" ${s?"disabled":`data-v="${i}"`}><b>${"ABC"[i]}</b> ${x[0]}</button>`;
+ const v=+await choose(card(Z[z].c,hd,tag,c[0],o.map((x,i)=>b(i,x)).join(""),foot)),ok=o[v][1];
+ const jury=`<div class="jury"><b>POUR LE JURY · RÉPONSE PRO</b><p>${c[2]}</p><b class="${ok?"g":"r"}">${ok?"✔ Pro : +1 PAP et +1 case":"✖ À revoir : −1 PAP et −1 case"}</b></div>`;
+ await choose(card(Z[z].c,hd,tag,c[0],o.map((x,i)=>b(i,x,x[1]?"ok":i==v?"ko":"dim")).join("")+jury+`<button class="go" data-v="1">Continuer</button>`,foot));
+ p.pap=Math.max(0,p.pap+(ok?1:-1));hud();await go(p,p.pos+(ok?1:-1))}
+async function event(p){const e=shuf(E)[0],f=[e[3]?(e[3]>0?"+":"−")+Math.abs(e[3])+" PAP":"",e[4]?(e[4]>0?"+":"−")+Math.abs(e[4])+" cases":""].filter(Boolean).join(" · ");
+ await choose(card(e[0]?"#2e9e5b":"#d64545","⚡ Imprévu","CARTE "+(e[0]?"BONUS":"MALUS"),e[1],`<p>${e[2]}</p><p><b class="${e[0]?"g":"r"}">${f}</b></p><button class="go" data-v="1">Continuer</button>`,p.n));
+ p.pap=Math.max(0,p.pap+e[3]);hud();if(e[4])await go(p,p.pos+e[4])}
+async function tutor(p){return(+await choose(card("#26325c","🔍 Tuteur","ENTRETIEN DE MI-PARCOURS","Cite à voix haute une règle de sécurité ou un droit du stagiaire.",`<p>Exemples : port des EPI, signaler un accident, droit de retrait, durée maximale du travail…</p><p>Le groupe valide ?</p><button class="opt" data-v="1">✔ Validé : je rejoue</button><button class="opt" data-v="0">✖ À revoir</button>`,p.n)))==1}
+async function act(p){const n=p.pos,k=kind(n),z=n>39?3:((n-1)/10)|0;if(k=="th")await question(p,z);else if(k=="ev")await event(p);else if(k=="tu")return tutor(p);return false}
+async function end(p){p.pap+=2;hud();const r=[...P].sort((a,b)=>b.pap-a.pap||(b==p)-(a==p));
+ await choose(`<div class="card" style="--c:#d4a017"><div class="hd"><span>🏁 Case 40 : bilan de stage signé</span></div><div class="bd"><p class="q">${p.n} arrive en premier (+2 PAP). Gagnant : ${r[0].n} !</p>${r.map((x,i)=>`<p>${i+1}. <b>${x.n}</b> · ${x.pap} PAP</p>`).join("")}<button class="go" data-v="1">Rejouer</button></div></div>`);location.reload()}
+async function play(){while(1){const p=P[cur],b=$("#roll");idle=true;hud();b.disabled=false;$("#msg").textContent=p.n+" : lance le dé (1 à 3)";
+ await new Promise(r=>b.onclick=r);idle=false;b.disabled=true;const v=await roll();$("#msg").textContent=p.n+" avance de "+v+" case"+(v>1?"s":"");
+ await go(p,p.pos+v);if(p.pos>=40)return end(p);const again=await act(p);if(p.pos>=40)return end(p);if(!again)cur=(cur+1)%4}}
+hud();
+choose(`<div class="card" style="--c:#2f7fd6"><div class="hd"><span>MISSION ATTITUDE PRO</span><span>4 joueurs</span></div><div class="bd"><p class="q">Du Jour 1 à la validation du stage</p><p>Chaque joueur commence avec <b>5 PAP</b> (Points d’Attitude Pro). Lance le dé (1 à 3) et avance. Case de couleur : une carte situation ; réponds juste, +1 PAP et +1 case, sinon −1 PAP et −1 case. ⚡ Imprévu : bonus ou malus. 🔍 Tuteur : cite une règle ou un droit pour rejouer.</p><p>Le premier à franchir la case 40 termine la partie ; le gagnant est celui qui a le plus de PAP.</p><button class="go" data-v="1">Commencer</button></div></div>`).then(play);
+</script></body></html>

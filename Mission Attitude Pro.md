@@ -1,0 +1,1 @@
+⏰ Organisation (orange) · 💬 Communication (vert) · 👤 Posture & attitude (violet) · ⛑️ Sécurité (bleu) · ⚡ Événement · 🔍 Tuteur
