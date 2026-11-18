@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CODE STAGE : La Course à l'Embauche (3D)</title>
+    <!-- Tailwind CSS pour une interface moderne, responsive et accessible -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js pour le rendu 3D du plateau et des pions -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Police Inter très lisible (confort visuel et accessibilité dyslexie) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: #f8fafc;
+            user-select: none;
+        }
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+        /* Style de dé 3D CSS animé dans le panneau latéral */
+        .dice-box {
+            perspective: 600px;
+            width: 68px;
+            height: 68px;
+        }
+        .dice-cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .dice-face {
+            position: absolute;
+            width: 68px;
+            height: 68px;
+            background: #ffffff;
+            border: 3px solid #cbd5e1;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: 800;
+            color: #0f172a;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.12);
+        }
+        .face-1 { transform: rotateY(0deg) translateZ(34px); }
+        .face-2 { transform: rotateY(90deg) translateZ(34px); }
+        .face-3 { transform: rotateY(180deg) translateZ(34px); }
+        .face-4 { transform: rotateY(-90deg) translateZ(34px); }
+        .face-5 { transform: rotateX(90deg) translateZ(34px); }
+        .face-6 { transform: rotateX(-90deg) translateZ(34px); }
+
+        @keyframes pulse-border {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+        }
+        .active-player-card {
+            animation: pulse-border 2s infinite;
+        }
+        /* Scrollbar discrète pour les modales sur petits écrans */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Conteneur du Canvas 3D Three.js -->
+    <div id="canvas-container"></div>
+
+    <!-- INTERFACE UTILISATEUR SUPERPOSÉE (HUD) -->
+    <div id="game-hud" class="relative z-10 pointer-events-none h-screen flex flex-col justify-between p-3 sm:p-5 hidden">
+        
+        <!-- Barre supérieure : Titre, Légende accessible et Contrôles caméra -->
+        <header class="flex flex-wrap items-center justify-between gap-2 pointer-events-auto bg-slate-900/85 backdrop-blur-md border border-slate-700/70 rounded-2xl px-4 py-2.5 shadow-xl">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white font-extrabold px-3 py-1.5 rounded-xl text-sm sm:text-base tracking-wide shadow">
+                    🎓 CODE STAGE
+                </div>
+                <div>
+                    <h1 class="font-bold text-sm sm:text-base text-white leading-tight">La Course à l'Embauche</h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Inspiré de « Mission, Attitude Pro ! » & du Code du travail</p>
+                </div>
+            </div>
+
+            <!-- Légende des couleurs + pictogrammes (Accessibilité daltoniens) -->
+            <div class="hidden lg:flex items-center gap-3 text-xs font-semibold">
+                <span class="flex items-center gap-1.5 bg-orange-500/20 text-orange-300 border border-orange-500/40 px-2.5 py-1 rounded-lg">🕒 Organisation</span>
+                <span class="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-lg">💬 Communication</span>
+                <span class="flex items-center gap-1.5 bg-purple-500/20 text-purple-300 border border-purple-500/40 px-2.5 py-1 rounded-lg">👔 Posture</span>
+                <span class="flex items-center gap-1.5 bg-blue-500/20 text-blue-300 border border-blue-500/40 px-2.5 py-1 rounded-lg">⛑️ Sécurité</span>
+                <span class="flex items-center gap-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-lg">⚡ Bonus/Malus</span>
+                <span class="flex items-center gap-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-2.5 py-1 rounded-lg">🔍 Tuteur</span>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button onclick="resetCamera()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-600 transition cursor-pointer" title="Recentrer la vue 3D">
+                    🎥 Centrer vue
+                </button>
+                <button onclick="toggleSound()" id="sound-btn" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-600 transition cursor-pointer">
+                    🔊 Son : ON
+                </button>
+            </div>
+        </header>
+
+        <!-- Zone centrale gauche : Tableau de bord des 4 Joueurs -->
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 my-auto pointer-events-none">
+            <aside class="pointer-events-auto w-full sm:w-72 flex flex-row sm:flex-col gap-2 overflow-x-auto pb-1 sm:pb-0" id="players-panel">
+                <!-- Généré dynamiquement en JS -->
+            </aside>
+
+            <!-- Panneau d'action du joueur actif & Dé 3D (Bas droite) -->
+            <div class="pointer-events-auto w-full sm:w-80 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-2xl p-4 shadow-2xl ml-auto">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Tour actuel</span>
+                        <div id="turn-player-name" class="text-lg font-extrabold text-white flex items-center gap-2">
+                            Joueur 1
+                        </div>
+                    </div>
+                    <div id="turn-player-badge" class="w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-inner">
+                        ⛑️
+                    </div>
+                </div>
+
+                <p id="status-banner" class="text-xs sm:text-sm text-slate-300 bg-slate-800/90 rounded-xl p-2.5 mb-3 border border-slate-700/80 min-h-[44px] flex items-center">
+                    Cliquez sur le dé pour lancer votre journée de stage !
+                </p>
+
+                <div class="flex items-center justify-between gap-4">
+                    <!-- Dé 3D cliquable -->
+                    <div onclick="handleRollDice()" class="dice-box cursor-pointer flex-shrink-0" title="Cliquer pour lancer le dé">
+                        <div id="dice-cube" class="dice-cube">
+                            <div class="dice-face face-1">1</div>
+                            <div class="dice-face face-2">2</div>
+                            <div class="dice-face face-3">3</div>
+                            <div class="dice-face face-4">4</div>
+                            <div class="dice-face face-5">5</div>
+                            <div class="dice-face face-6">6</div>
+                        </div>
+                    </div>
+
+                    <button id="roll-btn" onclick="handleRollDice()" class="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold py-3.5 px-4 rounded-xl shadow-lg shadow-blue-600/30 transition transform active:scale-95 cursor-pointer text-sm sm:text-base">
+                        🎲 Lancer le dé
+                    </button>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-2.5 text-center">
+                    Astuce : Glissez la souris sur le plateau pour pivoter la caméra 3D.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ÉCRAN D'ACCUEIL & CONFIGURATION DES 4 JOUEURS -->
+    <div id="setup-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 overflow-y-auto">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl my-auto">
+            <div class="text-center mb-6">
+                <span class="inline-block bg-blue-500/20 text-blue-300 border border-blue-500/40 text-xs font-bold px-3 py-1 rounded-full mb-2">
+                    JEU PÉDAGOGIQUE 3D • 4 JOUEURS • 14-20 ANS
+                </span>
+                <h1 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                    CODE STAGE : La Course à l'Embauche
+                </h1>
+                <p class="text-slate-300 text-sm sm:text-base mt-2 max-w-xl mx-auto leading-relaxed">
+                    Développez vos savoir-être professionnels, maîtrisez les règles du Code du travail et atteignez la <strong>case 40 (Validation du Stage)</strong> avec un maximum de <strong>Points d'Attitude Pro (PAP)</strong> !
+                </p>
+            </div>
+
+            <!-- Configuration des 4 stagiaires -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6">
+                <!-- Joueur 1 -->
+                <div class="bg-slate-800/90 border-2 border-orange-500/60 rounded-2xl p-3.5 flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-orange-500/20 border border-orange-500 flex items-center justify-center text-2xl flex-shrink-0">
+                        ⛑️
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-orange-400 uppercase">Joueur 1 • Pion Casque BTP</label>
+                        <input id="p1-name" type="text" value="Camille" maxlength="16" class="mt-1 w-full bg-slate-900 border border-slate-600 rounded-lg px-2.5 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-orange-400">
+                    </div>
+                </div>
+                <!-- Joueur 2 -->
+                <div class="bg-slate-800/90 border-2 border-emerald-500/60 rounded-2xl p-3.5 flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500 flex items-center justify-center text-2xl flex-shrink-0">
+                        💼
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-emerald-400 uppercase">Joueur 2 • Pion Mallette</label>
+                        <input id="p2-name" type="text" value="Yanis" maxlength="16" class="mt-1 w-full bg-slate-900 border border-slate-600 rounded-lg px-2.5 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-emerald-400">
+                    </div>
+                </div>
+                <!-- Joueur 3 -->
+                <div class="bg-slate-800/90 border-2 border-purple-500/60 rounded-2xl p-3.5 flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-purple-500/20 border border-purple-500 flex items-center justify-center text-2xl flex-shrink-0">
+                        ⚙️
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-purple-400 uppercase">Joueur 3 • Pion Engrenage</label>
+                        <input id="p3-name" type="text" value="Inès" maxlength="16" class="mt-1 w-full bg-slate-900 border border-slate-600 rounded-lg px-2.5 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-purple-400">
+                    </div>
+                </div>
+                <!-- Joueur 4 -->
+                <div class="bg-slate-800/90 border-2 border-blue-500/60 rounded-2xl p-3.5 flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500 flex items-center justify-center text-2xl flex-shrink-0">
+                        🛡️
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-blue-400 uppercase">Joueur 4 • Pion Bouclier</label>
+                        <input id="p4-name" type="text" value="Lucas" maxlength="16" class="mt-1 w-full bg-slate-900 border border-slate-600 rounded-lg px-2.5 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-blue-400">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rappel rapide des règles -->
+            <div class="bg-slate-800/60 border border-slate-700 rounded-2xl p-4 mb-6 text-xs sm:text-sm text-slate-300 space-y-1.5">
+                <p class="font-bold text-white">📋 Règles express :</p>
+                <p>• Chaque stagiaire démarre avec <strong>5 Points d'Attitude Pro (PAP)</strong>.</p>
+                <p>• Sur une case thématique, vous avez <strong>20 secondes maximum</strong> pour choisir la bonne attitude professionnelle.</p>
+                <p>• Bonne réponse : <strong>+1 PAP</strong> • Mauvaise réponse ou temps écoulé : <strong>-1 PAP et recul d'1 case</strong>.</p>
+            </div>
+
+            <button onclick="startGame()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-extrabold text-lg py-4 rounded-2xl shadow-xl shadow-emerald-500/20 transition transform active:scale-98 cursor-pointer">
+                🚀 Démarrer le stage (Lancer la partie)
+            </button>
+        </div>
+    </div>
+
+    <!-- MODALE DE CARTE QUESTION / DÉFI TUTEUR (CHRONO 20 SECONDES) -->
+    <div id="question-modal" class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
+        <div id="question-card-box" class="bg-slate-900 border-2 border-slate-700 rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl my-auto">
+            <!-- En-tête thématique coloré -->
+            <div id="q-header" class="px-6 py-4 flex items-center justify-between bg-orange-600 text-white">
+                <div class="flex items-center gap-3">
+                    <span id="q-icon" class="text-3xl">🕒</span>
+                    <div>
+                        <span id="q-category" class="text-xs font-extrabold uppercase tracking-wider opacity-90">ORGANISATION DU TRAVAIL</span>
+                        <h2 id="q-title" class="text-lg sm:text-xl font-extrabold leading-tight">Situation Professionnelle</h2>
+                    </div>
+                </div>
+                <!-- Compteur 20s -->
+                <div class="bg-slate-950/40 backdrop-blur-md px-3.5 py-2 rounded-2xl text-center min-w-[78px]">
+                    <span class="block text-[10px] uppercase font-bold opacity-80">Temps</span>
+                    <span id="timer-text" class="text-xl sm:text-2xl font-black tabular-nums">20s</span>
+                </div>
+            </div>
+
+            <!-- Barre de progression du chronomètre -->
+            <div class="w-full h-2.5 bg-slate-800">
+                <div id="timer-bar" class="h-full bg-emerald-400 transition-all duration-200" style="width: 100%;"></div>
+            </div>
+
+            <!-- Corps de la carte -->
+            <div class="p-6">
+                <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-4 mb-5">
+                    <p class="text-xs font-bold uppercase text-slate-400 mb-1">Mise en situation :</p>
+                    <p id="q-situation" class="text-base sm:text-lg font-semibold text-white leading-relaxed">
+                        Texte de la situation...
+                    </p>
+                </div>
+
+                <!-- Choix A, B, C -->
+                <div id="q-choices" class="space-y-3">
+                    <!-- Boutons injectés dynamiquement -->
+                </div>
+
+                <!-- Zone de Feedback pédagogique après réponse -->
+                <div id="q-feedback" class="hidden mt-5 rounded-2xl p-4 border">
+                    <div class="flex items-center gap-2 font-extrabold text-base sm:text-lg mb-1.5" id="feedback-title">
+                        ✅ Excellente attitude !
+                    </div>
+                    <p id="feedback-explanation" class="text-sm text-slate-200 leading-relaxed mb-3">
+                        Explication légale et professionnelle...
+                    </p>
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-700/60">
+                        <span id="feedback-reward" class="text-xs font-extrabold uppercase px-3 py-1 rounded-lg bg-slate-950/50">
+                            +1 PAP
+                        </span>
+                        <button onclick="closeQuestionModal()" class="bg-white hover:bg-slate-200 text-slate-950 font-extrabold px-5 py-2.5 rounded-xl text-sm transition cursor-pointer shadow">
+                            Continuer ➡️
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE CARTE BONUS / MALUS -->
+    <div id="event-modal" class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div id="event-card-box" class="bg-slate-900 border-2 border-amber-400 rounded-3xl max-w-md w-full overflow-hidden shadow-2xl text-center">
+            <div id="event-header" class="py-5 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
+                <div id="event-icon" class="text-5xl mb-2">🌟</div>
+                <span id="event-badge" class="inline-block bg-black/30 text-xs font-extrabold uppercase tracking-widest px-3 py-1 rounded-full mb-1">
+                    CARTE BONUS
+                </span>
+                <h2 id="event-title" class="text-2xl font-extrabold">Initiative Remarquée !</h2>
+            </div>
+            <div class="p-6">
+                <p id="event-desc" class="text-base text-slate-200 leading-relaxed mb-5">
+                    Description de l'événement...
+                </p>
+                <div id="event-effect-box" class="bg-slate-800 border border-slate-700 rounded-2xl py-3 px-4 font-extrabold text-lg text-amber-300 mb-6">
+                    +2 Cases & +1 PAP
+                </div>
+                <button onclick="applyEventAndClose()" class="w-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold py-3.5 rounded-xl text-base transition cursor-pointer shadow-lg">
+                    Appliquer l'effet ✔️
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ÉCRAN DE FIN DE PARTIE (PODIUM) -->
+    <div id="victory-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/90 backdrop-blur-md p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl text-center">
+            <div class="text-6xl mb-3">🏆</div>
+            <span class="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-extrabold uppercase px-3 py-1 rounded-full">
+                BILAN DE STAGE VALIDÉ
+            </span>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-2 mb-2">
+                Félicitations aux stagiaires !
+            </h2>
+            <p class="text-sm text-slate-400 mb-6">
+                Classement final combinant l'avancement sur le parcours et les Points d'Attitude Pro (PAP).
+            </p>
+
+            <div id="podium-list" class="space-y-3 mb-7 text-left">
+                <!-- Podium généré dynamiquement -->
+            </div>
+
+            <button onclick="location.reload()" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold py-4 rounded-2xl text-base shadow-lg transition cursor-pointer">
+                🔄 Nouvelle partie
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * 1. MOTEUR AUDIO SYNTHÉTISÉ (WEB AUDIO API - SANS FICHIER EXTERNE)
+         * ============================================================================
+         */
+        let soundEnabled = true;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            document.getElementById('sound-btn').textContent = soundEnabled ? '🔊 Son : ON' : '🔇 Son : OFF';
+        }
+
+        function playTone(freq, type = 'sine', duration = 0.15, vol = 0.12, delay = 0) {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime + delay);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime + delay);
+                osc.stop(audioCtx.currentTime + delay + duration);
+            } catch (e) {}
+        }
+
+        const SFX = {
+            dice: () => {
+                for (let i = 0; i < 5; i++) playTone(220 + i * 70, 'triangle', 0.06, 0.08, i * 0.06);
+            },
+            step: () => playTone(440, 'sine', 0.08, 0.09),
+            correct: () => {
+                playTone(523.25, 'sine', 0.14, 0.14, 0);
+                playTone(659.25, 'sine', 0.14, 0.14, 0.1);
+                playTone(783.99, 'sine', 0.25, 0.16, 0.2);
+            },
+            wrong: () => {
+                playTone(260, 'sawtooth', 0.18, 0.1, 0);
+                playTone(195, 'sawtooth', 0.28, 0.1, 0.15);
+            },
+            tick: () => playTone(880, 'sine', 0.04, 0.05),
+            bonus: () => {
+                playTone(587.33, 'triangle', 0.12, 0.14, 0);
+                playTone(880, 'triangle', 0.25, 0.16, 0.12);
+            },
+            victory: () => {
+                [523, 659, 784, 1046].forEach((f, idx) => playTone(f, 'triangle', 0.25, 0.15, idx * 0.12));
+            }
+        };
+
+        /**
+         * ============================================================================
+         * 2. BASE DE DONNÉES PÉDAGOGIQUE (28 CARTES QUESTIONS + BONUS/MALUS)
+         * Inspirée de "Mission, Attitude Pro !" et du Code du travail français
+         * ============================================================================
+         */
+        const THEMES = {
+            organisation: {
+                label: "ORGANISATION DU TRAVAIL",
+                icon: "🕒",
+                headerBg: "bg-orange-600",
+                borderCol: "border-orange-500",
+                hex: 0xf97316
+            },
+            communication: {
+                label: "COMMUNICATION",
+                icon: "💬",
+                headerBg: "bg-emerald-600",
+                borderCol: "border-emerald-500",
+                hex: 0x10b981
+            },
+            posture: {
+                label: "POSTURE & ATTITUDE AU TRAVAIL",
+                icon: "👔",
+                headerBg: "bg-purple-600",
+                borderCol: "border-purple-500",
+                hex: 0x9333ea
+            },
+            securite: {
+                label: "RÈGLES DE SÉCURITÉ & DROITS",
+                icon: "⛑️",
+                headerBg: "bg-blue-600",
+                borderCol: "border-blue-500",
+                hex: 0x2563eb
+            },
+            tuteur: {
+                label: "ENTRETIEN EXPRESS TUTEUR",
+                icon: "🔍",
+                headerBg: "bg-cyan-600",
+                borderCol: "border-cyan-500",
+                hex: 0x06b6d4
+            }
+        };
+
+        const QUESTIONS_DB = [
+            // --- ORGANISATION DU TRAVAIL (7 cartes) ---
+            {
+                theme: "organisation",
+                title: "Ponctualité & Transport",
+                situation: "Votre bus a 25 minutes de retard ce matin et vous allez manquer la réunion d'équipe de 8h30. Quelle est la réaction adaptée ?",
+                choices: [
+                    "A) Vous entrez discrètement à 8h55 sans rien dire pour ne déranger personne.",
+                    "B) Vous prévenez immédiatement votre tuteur par appel ou SMS en vous excusant.",
+                    "C) Vous rentrez chez vous car la matinée est déjà compromise."
+                ],
+                correct: 1,
+                explanation: "En entreprise (Art. L3171-1 du Code du travail sur le suivi du temps de travail), prévenir immédiatement son responsable permet de réorganiser l'équipe et prouve votre sens des responsabilités."
+            },
+            {
+                theme: "organisation",
+                title: "Gestion du temps & Autonomie",
+                situation: "Vous avez terminé toutes les tâches confiées par votre tuteur à 15h30, mais il est en rendez-vous client jusqu'à 17h00. Que faites-vous ?",
+                choices: [
+                    "A) Vous regardez des vidéos sur votre téléphone en attendant 17h00.",
+                    "B) Vous rangez/nettoyez votre poste et demandez à un collègue s'il a besoin d'aide.",
+                    "C) Vous quittez l'entreprise plus tôt puisque votre travail est fini."
+                ],
+                correct: 1,
+                explanation: "Faire preuve d'initiative (rangement, entraide) est l'un des critères majeurs d'évaluation des savoir-être en PFMP. Quitter son poste sans autorisation est une faute."
+            },
+            {
+                theme: "organisation",
+                title: "Délai non tenable",
+                situation: "On vous demande de préparer une commande pour 16h00. À 15h15, vous réalisez que vous n'aurez pas fini à temps. Comment réagissez-vous ?",
+                choices: [
+                    "A) Vous alertez tout de suite votre tuteur pour trouver une solution ensemble.",
+                    "B) Vous bâclez la fin du travail au risque d'envoyer des articles erronés.",
+                    "C) Vous attendez 16h00 pour dire que c'était trop long."
+                ],
+                correct: 0,
+                explanation: "Anticiper et signaler un blocage le plus tôt possible permet à l'équipe de s'adapter et évite un litige client."
+            },
+            {
+                theme: "organisation",
+                title: "Prise de notes & Rigueur",
+                situation: "Votre tuteur vous explique une procédure en 5 étapes que vous devrez refaire seul demain. Quelle méthode adoptez-vous ?",
+                choices: [
+                    "A) Vous écoutez les mains dans les poches en pensant tout retenir de mémoire.",
+                    "B) Vous prenez des notes dans un petit carnet et reformulez les points clés.",
+                    "C) Vous filmez votre tuteur à son insu avec votre smartphone."
+                ],
+                correct: 1,
+                explanation: "Prendre des notes démontre votre rigueur et votre motivation. Filmer sans autorisation porte atteinte au droit à l'image et à la confidentialité de l'entreprise."
+            },
+            {
+                theme: "organisation",
+                title: "Arrêt maladie / Absence",
+                situation: "Vous vous réveillez avec 39°C de fièvre et ne pouvez pas aller en stage aujourd'hui. Que devez-vous faire ?",
+                choices: [
+                    "A) Prévenir l'entreprise ET votre établissement scolaire dès le matin, puis fournir un certificat médical sous 48h.",
+                    "B) Attendre votre retour en stage la semaine suivante pour l'expliquer.",
+                    "C) Envoyer un message à un autre stagiaire pour qu'il transmette."
+                ],
+                correct: 0,
+                explanation: "Selon le Code du travail et la convention de stage, toute absence doit être signalée immédiatement à l'employeur et à l'établissement, puis justifiée sous 48 heures."
+            },
+            {
+                theme: "organisation",
+                title: "Horaires de pause",
+                situation: "La pause déjeuner dure officiellement 45 minutes. Vos collègues discutent encore au café au bout de 55 minutes. Que faites-vous ?",
+                choices: [
+                    "A) Vous restez avec eux tant que personne ne bouge.",
+                    "B) Vous respectez vos 45 minutes réglementaires et reprenez votre poste à l'heure.",
+                    "C) Vous partez 10 minutes plus tôt le soir pour compenser."
+                ],
+                correct: 1,
+                explanation: "En tant que stagiaire, vous devez respecter strictement les horaires fixés par le règlement intérieur de l'entreprise (Art. L1321-1)."
+            },
+            {
+                theme: "organisation",
+                title: "Priorisation des tâches",
+                situation: "Deux collègues vous demandent un service en même temps : l'un est urgent pour un client qui attend, l'autre concerne du classement pour demain.",
+                choices: [
+                    "A) Vous traitez d'abord la demande urgente pour le client, puis le classement.",
+                    "B) Vous commencez par le classement car c'est plus simple.",
+                    "C) Vous refusez les deux demandes."
+                ],
+                correct: 0,
+                explanation: "Savoir hiérarchiser l'urgence (satisfaction client immédiate) et l'important est une compétence clé d'organisation."
+            },
+
+            // --- COMMUNICATION (7 cartes) ---
+            {
+                theme: "communication",
+                title: "Consigne mal comprise",
+                situation: "Votre tuteur vous donne une instruction technique rapide mais vous n'avez pas compris un terme professionnel. Que faites-vous ?",
+                choices: [
+                    "A) Vous dites « Oui » et improvisez pour ne pas passer pour quelqu'un qui ne sait pas.",
+                    "B) Vous demandez poliment une reformulation ou une démonstration rapide.",
+                    "C) Vous ne faites rien en attendant qu'il revienne."
+                ],
+                correct: 1,
+                explanation: "Oser poser des questions et reformuler montre votre sérieux et évite des erreurs coûteuses ou dangereuses."
+            },
+            {
+                theme: "communication",
+                title: "Gestion d'un désaccord",
+                situation: "Un collègue vous reproche sèchement une erreur devant des clients. Quelle est la meilleure réaction ?",
+                choices: [
+                    "A) Vous lui répondez sur le même ton devant les clients.",
+                    "B) Vous gardez votre calme et proposez d'en discuter à l'écart, en tête-à-tête.",
+                    "C) Vous quittez la pièce en claquant la porte."
+                ],
+                correct: 1,
+                explanation: "La maîtrise de soi et le dialogue apaisé en privé préservent l'image de l'entreprise et le climat de travail (Art. L1152-1 sur le respect mutuel)."
+            },
+            {
+                theme: "communication",
+                title: "Accueil d'un client mécontent",
+                situation: "Un client agacé se plaint d'un retard de livraison alors que vous êtes à l'accueil. Comment réagissez-vous ?",
+                choices: [
+                    "A) Vous lui dites que ce n'est pas votre faute, vous êtes juste stagiaire.",
+                    "B) Vous l'écoutez sans l'interrompre, reformulez son problème et appelez votre responsable.",
+                    "C) Vous soupirez en levant les yeux au ciel."
+                ],
+                correct: 1,
+                explanation: "L'écoute active et l'empathie désamorcent 80 % des tensions clients avant de passer le relais à un responsable habilité."
+            },
+            {
+                theme: "communication",
+                title: "Registre de langage",
+                situation: "Comment vous adressez-vous aux clients et aux responsables dès votre arrivée en stage ?",
+                choices: [
+                    "A) Vous tutoyez tout le monde pour créer une ambiance décontractée.",
+                    "B) Vous utilisez le vouvoiement et des formules de politesse (« Bonjour », « S'il vous plaît »).",
+                    "C) Vous utilisez des expressions familières (« Wesh », « Ça roule »)."
+                ],
+                correct: 1,
+                explanation: "Le vouvoiement est la règle par défaut en milieu professionnel. On ne passe au tutoiement avec un collègue que s'il vous y invite explicitement."
+            },
+            {
+                theme: "communication",
+                title: "Erreur commise",
+                situation: "Vous venez de faire tomber et casser un article en réserve. Personne ne vous a vu. Que faites-vous ?",
+                choices: [
+                    "A) Vous cachez les morceaux derrière des cartons.",
+                    "B) Vous prévenez immédiatement votre tuteur avec honnêteté et sécurisez la zone.",
+                    "C) Vous accusez l'équipe du matin."
+                ],
+                correct: 1,
+                explanation: "L'honnêteté et la transparence renforcent la confiance du tuteur. Dissimuler une erreur aggrave toujours la situation."
+            },
+            {
+                theme: "communication",
+                title: "Confidentialité en entreprise",
+                situation: "Pendant votre stage, vous avez accès aux tarifs fournisseurs et aux fichiers clients de l'entreprise. Pouvez-vous en parler sur les réseaux sociaux ?",
+                choices: [
+                    "A) Oui, si vous ne citez pas le nom du patron.",
+                    "B) Non, vous êtes soumis à une obligation de discrétion et de confidentialité.",
+                    "C) Oui, uniquement en story privée."
+                ],
+                correct: 1,
+                explanation: "Tout salarié ou stagiaire a une obligation de loyauté et de discrétion professionnelle (Art. L1222-1 du Code du travail)."
+            },
+            {
+                theme: "communication",
+                title: "Inclusion & Handicap",
+                situation: "Un nouveau collègue malentendant rejoint votre équipe. Comment facilitez-vous la communication avec lui ?",
+                choices: [
+                    "A) Vous évitez de lui parler pour ne pas le gêner.",
+                    "B) Vous vous placez face à lui, articulez naturellement et utilisez l'écrit si besoin.",
+                    "C) Vous lui criez dans l'oreille."
+                ],
+                correct: 1,
+                explanation: "L'inclusion et l'adaptation de sa communication aux personnes en situation de handicap sont des valeurs essentielles en entreprise (Art. L5212-1)."
+            },
+
+            // --- POSTURE & ATTITUDE (7 cartes) ---
+            {
+                theme: "posture",
+                title: "Smartphone personnel",
+                situation: "Votre téléphone vibre dans votre poche pendant qu'un collègue vous explique une tâche. Quelle attitude adoptez-vous ?",
+                choices: [
+                    "A) Vous lisez votre notification tout en hochant la tête.",
+                    "B) Vous laissez votre téléphone en mode silencieux dans votre poche/casier et restez attentif.",
+                    "C) Vous décrochez en disant « Deux secondes, c'est urgent »."
+                ],
+                correct: 1,
+                explanation: "Le téléphone personnel doit rester coupé ou en silencieux sur le temps de travail (sauf urgence autorisée). L'attention portée à l'autre est une marque de respect."
+            },
+            {
+                theme: "posture",
+                title: "Tenue vestimentaire",
+                situation: "Vous êtes en stage dans un commerce ou un bureau d'accueil. Pouvez-vous venir en jogging et casquette ?",
+                choices: [
+                    "A) Oui, la liberté vestimentaire est totale.",
+                    "B) Non, l'employeur peut exiger une tenue correcte adaptée au contact client (Art. L1121-1).",
+                    "C) Oui, tant que les vêtements sont propres."
+                ],
+                correct: 1,
+                explanation: "Selon l'article L1121-1 du Code du travail, une tenue vestimentaire peut être imposée lorsqu'elle est justifiée par la nature de la tâche (contact clientèle, image, sécurité)."
+            },
+            {
+                theme: "posture",
+                title: "Esprit d'équipe & Mixité",
+                situation: "Un collègue fait une remarque sexiste envers une stagiaire qui réalise une tâche technique. Quelle est la bonne attitude ?",
+                choices: [
+                    "A) Vous riez pour vous intégrer au groupe.",
+                    "B) Vous ne cautionnez pas, soutenez votre collègue et rappelez que les compétences n'ont pas de genre.",
+                    "C) Vous ajoutez une blague du même style."
+                ],
+                correct: 1,
+                explanation: "L'article L1142-2-1 du Code du travail interdit tout agissement sexiste. L'égalité professionnelle et le respect mutuel s'appliquent à tous."
+            },
+            {
+                theme: "posture",
+                title: "Attitude corporelle",
+                situation: "Il y a un moment calme dans le magasin ou l'atelier. Quelle posture devez-vous adopter ?",
+                choices: [
+                    "A) Vous vous appuyez contre le comptoir les bras croisés en bâillant.",
+                    "B) Vous restez dynamique, souriant, disponible et vérifiez la propreté de l'espace.",
+                    "C) Vous vous asseyez par terre dans un coin."
+                ],
+                correct: 1,
+                explanation: "La communication non verbale (posture droite, regard ouvert, sourire) représente plus de 50 % de la première impression professionnelle."
+            },
+            {
+                theme: "posture",
+                title: "Acceptation des critiques",
+                situation: "Votre tuteur vous fait une remarque constructive pour améliorer la présentation d'un document. Comment réagissez-vous ?",
+                choices: [
+                    "A) Vous vous braquez et dites que c'était déjà très bien comme ça.",
+                    "B) Vous le remerciez pour le conseil et appliquez immédiatement la correction.",
+                    "C) Vous boudez jusqu'à la fin de la journée."
+                ],
+                correct: 1,
+                explanation: "Savoir recevoir un retour constructif est la base de l'apprentissage en stage."
+            },
+            {
+                theme: "posture",
+                title: "Politesse quotidienne",
+                situation: "Vous arrivez le matin dans l'entreprise. Qui devez-vous saluer ?",
+                choices: [
+                    "A) Uniquement votre tuteur de stage.",
+                    "B) Toutes les personnes que vous croisez (accueil, collègues, agents d'entretien, direction).",
+                    "C) Personne tant qu'on ne vous a pas dit bonjour en premier."
+                ],
+                correct: 1,
+                explanation: "Saluer l'ensemble du personnel sans distinction hiérarchique est un marqueur fondamental de savoir-vivre et d'intégration."
+            },
+            {
+                theme: "posture",
+                title: "Curiosité professionnelle",
+                situation: "Vous observez une opération nouvelle réalisée par un technicien expérimenté. Quelle attitude montre votre motivation ?",
+                choices: [
+                    "A) Vous regardez ailleurs en attendant que ça passe.",
+                    "B) Vous observez attentivement et posez des questions pertinentes au bon moment.",
+                    "C) Vous touchez aux commandes de la machine sans demander."
+                ],
+                correct: 1,
+                explanation: "La curiosité active (observer + questionner sans perturber la sécurité) montre votre intérêt réel pour le métier."
+            },
+
+            // --- RÈGLES DE SÉCURITÉ & DROITS (7 cartes) ---
+            {
+                theme: "securite",
+                title: "Oubli d'EPI obligatoire",
+                situation: "Vous avez oublié vos chaussures de sécurité à la maison, mais votre tuteur vous demande d'aller quand même en zone d'atelier. Que faites-vous ?",
+                choices: [
+                    "A) Vous y allez en baskets pour ne pas contrarier votre tuteur.",
+                    "B) Vous rappelez poliment que le port des EPI est obligatoire pour entrer en zone à risques.",
+                    "C) Vous empruntez les chaussures trop grandes d'un visiteur."
+                ],
+                correct: 1,
+                explanation: "Article L4122-1 du Code du travail : chaque travailleur (et stagiaire) doit prendre soin de sa sécurité. Travailler sans EPI réglementaire est strictement interdit."
+            },
+            {
+                theme: "securite",
+                title: "Droit de retrait & Danger",
+                situation: "On vous demande d'utiliser un appareil électrique dont le câble est dénudé et laisse apparaître des fils de cuivre. Que faites-vous ?",
+                choices: [
+                    "A) Vous mettez du scotch autour et l'utilisez quand même.",
+                    "B) Vous refusez de l'utiliser (droit de retrait) et signalez immédiatement le danger à votre tuteur.",
+                    "C) Vous demandez à un autre stagiaire de le tester."
+                ],
+                correct: 1,
+                explanation: "Article L4131-1 du Code du travail : face à un danger grave et imminent pour sa vie ou sa santé, tout travailleur a le droit et le devoir de se retirer et d'alerter."
+            },
+            {
+                theme: "securite",
+                title: "Travaux interdits aux mineurs",
+                situation: "Vous avez 16 ans (mineur) et on vous demande d'utiliser une machine dangereuse non prévue dans votre convention de stage. Que dit la loi ?",
+                choices: [
+                    "A) Vous devez obéir car vous êtes en stage.",
+                    "B) C'est interdit par le Code du travail (Art. D4153-15) : les jeunes de moins de 18 ans sont protégés contre les travaux dangereux.",
+                    "C) Vous pouvez le faire si un copain vous regarde."
+                ],
+                correct: 1,
+                explanation: "Le Code du travail (Articles D4153-15 et suivants) interdit aux mineurs certains travaux dangereux, sauf dérogation officielle déclarée par l'employeur."
+            },
+            {
+                theme: "securite",
+                title: "Manutention de charges lourdes",
+                situation: "Vous devez déplacer plusieurs cartons très lourds vers la réserve. Quelle est la bonne pratique de prévention ?",
+                choices: [
+                    "A) Vous portez trois cartons d'un coup en courbant le dos pour aller plus vite.",
+                    "B) Vous utilisez un diable/chariot ou pliez les genoux en gardant le dos droit, et demandez de l'aide si besoin.",
+                    "C) Vous poussez les cartons avec le pied."
+                ],
+                correct: 1,
+                explanation: "La prévention des troubles musculo-squelettiques (TMS) impose d'utiliser les aides mécaniques disponibles et d'adopter les gestes et postures adaptés."
+            },
+            {
+                theme: "securite",
+                title: "Accident du travail en stage",
+                situation: "Vous vous coupez légèrement la main avec un cutter pendant votre stage. Que devez-vous faire immédiatement ?",
+                choices: [
+                    "A) Mettre un mouchoir et ne rien dire pour ne pas faire d'histoires.",
+                    "B) Désinfecter, prévenir tout de suite votre tuteur (registre d'infirmerie / déclaration) et votre lycée.",
+                    "C) Rentrer chez vous sans prévenir."
+                ],
+                correct: 1,
+                explanation: "Tout accident, même bénin, survenu en stage doit être signalé immédiatement afin d'être soigné et déclaré officiellement (protection sociale du stagiaire)."
+            },
+            {
+                theme: "securite",
+                title: "Issue de secours obstruée",
+                situation: "Vous remarquez que des palettes vides bloquent l'accès à une issue de secours et à un extincteur. Que faites-vous ?",
+                choices: [
+                    "A) Vous ne faites rien, ce n'est pas votre service.",
+                    "B) Vous alertez immédiatement un responsable ou dégagez l'accès en sécurité.",
+                    "C) Vous ajoutez un carton par-dessus."
+                ],
+                correct: 1,
+                explanation: "Article R4227-4 du Code du travail : les dégagements et issues de secours doivent rester librement praticables en permanence."
+            },
+            {
+                theme: "securite",
+                title: "Produits chimiques sans étiquette",
+                situation: "Vous trouvez un flacon rempli d'un liquide inconnu sans étiquette dans le local d'entretien. Que faites-vous ?",
+                choices: [
+                    "A) Vous le sentez ou le versez dans l'évier pour voir ce que c'est.",
+                    "B) Vous n'y touchez pas et le signalez immédiatement à votre tuteur.",
+                    "C) Vous l'utilisez pour nettoyer les vitres."
+                ],
+                correct: 1,
+                explanation: "Le risque chimique (Art. R4412-1) interdit de manipuler ou transvaser un produit non identifié."
+            },
+
+            // --- DÉFIS EXPRESS TUTEUR (Cases Loupe) ---
+            {
+                theme: "tuteur",
+                title: "Bilan Mi-Parcours : Droits du stagiaire",
+                situation: "Votre tuteur vous interroge lors du bilan : « Quel document officiel encadre tes horaires, tes missions et ton assurance pendant ton stage ? »",
+                choices: [
+                    "A) Un simple accord oral avec le chef d'équipe.",
+                    "B) La convention de stage signée par l'élève, l'entreprise et l'établissement scolaire.",
+                    "C) Le ticket de cantine."
+                ],
+                correct: 1,
+                explanation: "Article L124-1 du Code de l'éducation : aucun stage ne peut débuter sans une convention de stage tripartite dûment signée."
+            },
+            {
+                theme: "tuteur",
+                title: "Bilan Mi-Parcours : Durée du travail mineur",
+                situation: "Votre tuteur vérifie vos connaissances : « Si tu as moins de 18 ans, quelle est la durée maximale quotidienne de travail autorisée en stage ? »",
+                choices: [
+                    "A) 8 heures par jour (et 35 heures par semaine).",
+                    "B) 12 heures par jour sans pause.",
+                    "C) 10 heures de nuit."
+                ],
+                correct: 0,
+                explanation: "Article L3162-1 du Code du travail : pour les jeunes travailleurs et stagiaires de moins de 18 ans, la durée du travail ne peut excéder 8 heures par jour et 35 heures par semaine."
+            }
+        ];
+
+        const EVENTS_DB = [
+            {
+                type: "bonus",
+                icon: "🌟",
+                title: "Initiative Remarquée !",
+                desc: "Vous avez nettoyé et rangé votre poste de travail avant la fin de la journée sans qu'on vous le demande.",
+                effectText: "+2 Cases & +1 PAP",
+                move: 2,
+                pap: 1,
+                extraTurn: false,
+                skipTurn: false
+            },
+            {
+                type: "bonus",
+                icon: "🤝",
+                title: "Esprit d'Équipe Exemplaire",
+                desc: "Vous avez aidé un collègue débordé à préparer une livraison importante dans les temps.",
+                effectText: "+1 PAP & Rejouez immédiatement !",
+                move: 0,
+                pap: 1,
+                extraTurn: true,
+                skipTurn: false
+            },
+            {
+                type: "bonus",
+                icon: "😊",
+                title: "Compliment Client",
+                desc: "Un client a félicité votre responsable pour votre accueil souriant, poli et efficace.",
+                effectText: "+3 Cases & +1 PAP",
+                move: 3,
+                pap: 1,
+                extraTurn: false,
+                skipTurn: false
+            },
+            {
+                type: "bonus",
+                icon: "📝",
+                title: "Rigueur & Organisation",
+                desc: "Votre carnet de bord de stage est impeccablement tenu à jour, votre tuteur est impressionné.",
+                effectText: "+2 PAP",
+                move: 0,
+                pap: 2,
+                extraTurn: false,
+                skipTurn: false
+            },
+            {
+                type: "malus",
+                icon: "⏰",
+                title: "Retard Non Prévenu",
+                desc: "Panne de réveil de 30 minutes et vous n'avez pas appelé l'entreprise pour prévenir votre tuteur.",
+                effectText: "-2 Cases & -1 PAP",
+                move: -2,
+                pap: -1,
+                extraTurn: false,
+                skipTurn: false
+            },
+            {
+                type: "malus",
+                icon: "📱",
+                title: "Téléphone en Zone Interdite",
+                desc: "Vous consultiez vos réseaux sociaux pendant le service alors que c'est interdit par le règlement.",
+                effectText: "-1 PAP & Passez votre prochain tour",
+                move: 0,
+                pap: -1,
+                extraTurn: false,
+                skipTurn: true
+            },
+            {
+                type: "malus",
+                icon: "👟",
+                title: "Oubli de Tenue Réglementaire",
+                desc: "Vous êtes arrivé sans votre badge d'accès ni votre tenue professionnelle obligatoire.",
+                effectText: "-2 Cases",
+                move: -2,
+                pap: 0,
+                extraTurn: false,
+                skipTurn: false
+            },
+            {
+                type: "malus",
+                icon: "🗣️",
+                title: "Consigne Non Écoutée",
+                desc: "Vous avez commencé une tâche sans écouter la fin des consignes et devez tout recommencer.",
+                effectText: "-1 Case & -1 PAP",
+                move: -1,
+                pap: -1,
+                extraTurn: false,
+                skipTurn: false
+            }
+        ];
+
+        /**
+         * ============================================================================
+         * 3. CONFIGURATION DU PLATEAU DE 40 CASES (PARCOURS SERPENTIN 3D)
+         * ============================================================================
+         */
+        const BOARD_SIZE = 40;
+        const BOARD_TILES = [];
+
+        // Définition des 40 cases avec alternance pédagogique équilibrée
+        const TILE_PATTERN = [
+            "start",         // 1
+            "organisation",  // 2
+            "communication", // 3
+            "posture",       // 4
+            "event",         // 5 (Éclair)
+            "securite",      // 6
+            "organisation",  // 7
+            "communication", // 8
+            "posture",       // 9
+            "securite",      // 10
+            "tuteur",        // 11 (Loupe)
+            "organisation",  // 12
+            "communication", // 13
+            "posture",       // 14
+            "event",         // 15 (Éclair)
+            "securite",      // 16
+            "organisation",  // 17
+            "communication", // 18
+            "posture",       // 19
+            "securite",      // 20
+            "tuteur",        // 21 (Loupe)
+            "organisation",  // 22
+            "communication", // 23
+            "posture",       // 24
+            "event",         // 25 (Éclair)
+            "securite",      // 26
+            "organisation",  // 27
+            "communication", // 28
+            "posture",       // 29
+            "securite",      // 30
+            "tuteur",        // 31 (Loupe)
+            "organisation",  // 32
+            "communication", // 33
+            "posture",       // 34
+            "event",         // 35 (Éclair)
+            "securite",      // 36
+            "communication", // 37
+            "posture",       // 38
+            "securite",      // 39
+            "finish"         // 40
+        ];
+
+        /**
+         * ============================================================================
+         * 4. ÉTAT DU JEU & JOUEURS
+         * ============================================================================
+         */
+        let players = [
+            { id: 0, name: "Camille", role: "BTP / Industrie", icon: "⛑️", colorHex: "#f97316", threeColor: 0xf97316, pos: 0, pap: 5, skipTurn: false, mesh: null },
+            { id: 1, name: "Yanis", role: "Commerce / Vente", icon: "💼", colorHex: "#10b981", threeColor: 0x10b981, pos: 0, pap: 5, skipTurn: false, mesh: null },
+            { id: 2, name: "Inès", role: "Maintenance / Prod.", icon: "⚙️", colorHex: "#a855f7", threeColor: 0xa855f7, pos: 0, pap: 5, skipTurn: false, mesh: null },
+            { id: 3, name: "Lucas", role: "Sécurité / Services", icon: "🛡️", colorHex: "#3b82f6", threeColor: 0x3b82f6, pos: 0, pap: 5, skipTurn: false, mesh: null }
+        ];
+
+        let currentPlayerIdx = 0;
+        let isBusy = false;
+        let questionTimerInterval = null;
+        let timeLeft = 20;
+        let activeQuestion = null;
+        let activeEvent = null;
+        let usedQuestionIndices = new Set();
+
+        /**
+         * ============================================================================
+         * 5. SCÈNE 3D THREE.JS (PLATEAU SERPENTIN, TEXTURES TEXTE/ICÔNES, PIONS 3D)
+         * ============================================================================
+         */
+        let scene, camera, renderer, boardGroup;
+        let tilePositions3D = [];
+        let isDraggingCamera = false;
+        let prevMouse = { x: 0, y: 0 };
+        let cameraAngle = { theta: 0.35, phi: 0.82, radius: 25 };
+
+        function createTileTexture(number, type) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            const styles = {
+                start:         { bg: "#0f172a", border: "#38bdf8", icon: "🚀", sub: "JOUR 1" },
+                finish:        { bg: "#14532d", border: "#facc15", icon: "🏆", sub: "EMBAUCHE" },
+                organisation:  { bg: "#ea580c", border: "#fed7aa", icon: "🕒", sub: "ORGA" },
+                communication: { bg: "#059669", border: "#a7f3d0", icon: "💬", sub: "COMM" },
+                posture:       { bg: "#7e22ce", border: "#e9d5ff", icon: "👔", sub: "POSTURE" },
+                securite:      { bg: "#1d4ed8", border: "#bfdbfe", icon: "⛑️", sub: "SÉCURITÉ" },
+                event:         { bg: "#d97706", border: "#fef08a", icon: "⚡", sub: "BONUS/MALUS" },
+                tuteur:        { bg: "#0891b2", border: "#cffafe", icon: "🔍", sub: "TUTEUR" }
+            };
+
+            const st = styles[type] || styles.organisation;
+
+            // Fond arrondi
+            ctx.fillStyle = st.bg;
+            ctx.fillRect(0, 0, 256, 256);
+
+            // Bordure contrastée
+            ctx.strokeStyle = st.border;
+            ctx.lineWidth = 14;
+            ctx.strokeRect(10, 10, 236, 236);
+
+            // Numéro de case
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "800 44px Inter, sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(number.toString(), 26, 62);
+
+            // Pictogramme central
+            ctx.font = "84px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(st.icon, 128, 158);
+
+            // Libellé bas (accessibilité daltoniens)
+            ctx.fillStyle = "rgba(255,255,255,0.92)";
+            ctx.font = "700 24px Inter, sans-serif";
+            ctx.fillText(st.sub, 128, 218);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.anisotropy = 4;
+            return texture;
+        }
+
+        // Création des 4 modèles de pions 3D distincts et détaillés
+        function createPlayerPawn3D(player) {
+            const group = new THREE.Group();
+            const matMain = new THREE.MeshStandardMaterial({
+                color: player.threeColor,
+                roughness: 0.3,
+                metalness: 0.25
+            });
+            const matAccent = new THREE.MeshStandardMaterial({
+                color: 0xf8fafc,
+                roughness: 0.2,
+                metalness: 0.4
+            });
+            const matDark = new THREE.MeshStandardMaterial({
+                color: 0x1e293b,
+                roughness: 0.5
+            });
+
+            // Socle commun élégant pour tous les pions
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 0.16, 24), matDark);
+            base.position.y = 0.08;
+            base.castShadow = true;
+            group.add(base);
+
+            const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.4, 0.1, 24), matMain);
+            ring.position.y = 0.2;
+            ring.castShadow = true;
+            group.add(ring);
+
+            if (player.id === 0) {
+                // PION 1 : CASQUE DE CHANTIER / SÉCURITÉ 3D
+                const dome = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.38, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+                    matMain
+                );
+                dome.position.y = 0.32;
+                dome.castShadow = true;
+                group.add(dome);
+
+                // Visière du casque
+                const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.44, 0.05, 24), matMain);
+                brim.scale.set(1.15, 1, 0.95);
+                brim.position.set(0.06, 0.33, 0);
+                brim.castShadow = true;
+                group.add(brim);
+
+                // Crête de renfort blanche sur le casque
+                const crest = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.12, 0.1), matAccent);
+                crest.position.y = 0.66;
+                group.add(crest);
+
+            } else if (player.id === 1) {
+                // PION 2 : PORTE-DOCUMENTS / MALLETTE PROFESSIONNELLE 3D
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.46, 0.24), matMain);
+                body.position.y = 0.48;
+                body.castShadow = true;
+                group.add(body);
+
+                // Poignée supérieure
+                const handle = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 10, 20, Math.PI), matDark);
+                handle.position.y = 0.71;
+                group.add(handle);
+
+                // Fermoirs métalliques
+                const clasp1 = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.26), matAccent);
+                clasp1.position.set(-0.16, 0.54, 0);
+                group.add(clasp1);
+
+                const clasp2 = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.26), matAccent);
+                clasp2.position.set(0.16, 0.54, 0);
+                group.add(clasp2);
+
+            } else if (player.id === 2) {
+                // PION 3 : ENGRENAGE / ROUE DENTÉE INDUSTRIELLE 3D
+                const gearGroup = new THREE.Group();
+                const core = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.18, 24), matMain);
+                core.rotation.x = Math.PI / 2;
+                core.castShadow = true;
+                gearGroup.add(core);
+
+                const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.2, 16), matAccent);
+                hole.rotation.x = Math.PI / 2;
+                gearGroup.add(hole);
+
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i / 8) * Math.PI * 2;
+                    const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.18), matMain);
+                    tooth.position.set(Math.cos(angle) * 0.35, Math.sin(angle) * 0.35, 0);
+                    tooth.rotation.z = angle;
+                    tooth.castShadow = true;
+                    gearGroup.add(tooth);
+                }
+                gearGroup.position.y = 0.62;
+                group.add(gearGroup);
+
+            } else {
+                // PION 4 : BOUCLIER DE PROTECTION & PRÉVENTION 3D
+                const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.22, 0.56, 6), matMain);
+                shield.scale.set(1, 1, 0.42);
+                shield.position.y = 0.54;
+                shield.castShadow = true;
+                group.add(shield);
+
+                // Croix de sécurité blanche sur le bouclier
+                const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.28, 0.24), matAccent);
+                crossV.position.y = 0.55;
+                group.add(crossV);
+
+                const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.09, 0.24), matAccent);
+                crossH.position.y = 0.55;
+                group.add(crossH);
+            }
+
+            return group;
+        }
+
+        function init3DScene() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.015);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Éclairage studio doux et contrasté
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+            dirLight.position.set(12, 22, 14);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 2;
+            dirLight.shadow.camera.far = 50;
+            const d = 16;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Table / Socle du plateau
+            const tableGeo = new THREE.BoxGeometry(21, 0.6, 13.5);
+            const tableMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+            const tableMesh = new THREE.Mesh(tableGeo, tableMat);
+            tableMesh.position.y = -0.35;
+            tableMesh.receiveShadow = true;
+            scene.add(tableMesh);
+
+            // Cadre décoratif autour du plateau
+            const borderGeo = new THREE.BoxGeometry(21.6, 0.75, 14.1);
+            const borderMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 });
+            const borderMesh = new THREE.Mesh(borderGeo, borderMat);
+            borderMesh.position.y = -0.45;
+            scene.add(borderMesh);
+
+            // Construction du parcours serpentin de 40 cases (8 colonnes x 5 rangées)
+            boardGroup = new THREE.Group();
+            const cols = 8;
+            const rows = 5;
+            const spacingX = 2.35;
+            const spacingZ = 2.35;
+            const startX = -((cols - 1) * spacingX) / 2;
+            const startZ = -((rows - 1) * spacingZ) / 2;
+
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                const row = Math.floor(i / cols);
+                const colInRow = i % cols;
+                // Parcours en serpentin (gauche->droite sur lignes paires, droite->gauche sur lignes impaires)
+                const col = (row % 2 === 0) ? colInRow : (cols - 1 - colInRow);
+
+                const x = startX + col * spacingX;
+                const z = startZ + row * spacingZ;
+                tilePositions3D.push(new THREE.Vector3(x, 0, z));
+
+                const type = TILE_PATTERN[i];
+                const topTex = createTileTexture(i + 1, type);
+                const sideMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
+                const topMat = new THREE.MeshStandardMaterial({ map: topTex, roughness: 0.35 });
+
+                const tileGeo = new THREE.BoxGeometry(2.12, 0.24, 2.12);
+                const tileMesh = new THREE.Mesh(tileGeo, [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
+                tileMesh.position.set(x, 0.08, z);
+                tileMesh.receiveShadow = true;
+                tileMesh.castShadow = true;
+                boardGroup.add(tileMesh);
+
+                // Petit connecteur visuel entre la case i et i+1 pour guider l'œil
+                if (i < BOARD_SIZE - 1) {
+                    const nextRow = Math.floor((i + 1) / cols);
+                    const nextColInRow = (i + 1) % cols;
+                    const nextCol = (nextRow % 2 === 0) ? nextColInRow : (cols - 1 - nextColInRow);
+                    const nx = startX + nextCol * spacingX;
+                    const nz = startZ + nextRow * spacingZ;
+
+                    const connGeo = new THREE.BoxGeometry(
+                        Math.abs(nx - x) > 0.1 ? 0.5 : 0.28,
+                        0.12,
+                        Math.abs(nz - z) > 0.1 ? 0.5 : 0.28
+                    );
+                    const connMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
+                    const connMesh = new THREE.Mesh(connGeo, connMat);
+                    connMesh.position.set((x + nx) / 2, 0.04, (z + nz) / 2);
+                    boardGroup.add(connMesh);
+                }
+            }
+            scene.add(boardGroup);
+
+            // Création des 4 pions 3D et placement sur la case 1 (Départ)
+            players.forEach((p, idx) => {
+                p.mesh = createPlayerPawn3D(p);
+                scene.add(p.mesh);
+                placePawnInstant(idx, 0);
+            });
+
+            // Contrôles souris/tactile pour pivoter et zoomer la caméra
+            const dom = renderer.domElement;
+            dom.addEventListener('mousedown', (e) => { isDraggingCamera = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+            window.addEventListener('mouseup', () => { isDraggingCamera = false; });
+            window.addEventListener('mousemove', (e) => {
+                if (!isDraggingCamera) return;
+                const dx = e.clientX - prevMouse.x;
+                const dy = e.clientY - prevMouse.y;
+                prevMouse = { x: e.clientX, y: e.clientY };
+                cameraAngle.theta -= dx * 0.007;
+                cameraAngle.phi = Math.max(0.35, Math.min(1.35, cameraAngle.phi - dy * 0.007));
+                updateCameraPosition();
+            });
+            dom.addEventListener('wheel', (e) => {
+                cameraAngle.radius = Math.max(14, Math.min(34, cameraAngle.radius + e.deltaY * 0.01));
+                updateCameraPosition();
+            }, { passive: true });
+
+            // Support tactile pour tablette/mobile
+            dom.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDraggingCamera = true;
+                    prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+            }, { passive: true });
+            dom.addEventListener('touchend', () => { isDraggingCamera = false; });
+            dom.addEventListener('touchmove', (e) => {
+                if (!isDraggingCamera || e.touches.length !== 1) return;
+                const dx = e.touches[0].clientX - prevMouse.x;
+                const dy = e.touches[0].clientY - prevMouse.y;
+                prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                cameraAngle.theta -= dx * 0.008;
+                cameraAngle.phi = Math.max(0.35, Math.min(1.35, cameraAngle.phi - dy * 0.008));
+                updateCameraPosition();
+            }, { passive: true });
+
+            window.addEventListener('resize', onWindowResize);
+            animate3D();
+        }
+
+        function updateCameraPosition() {
+            if (!camera) return;
+            camera.position.x = cameraAngle.radius * Math.sin(cameraAngle.phi) * Math.sin(cameraAngle.theta);
+            camera.position.y = cameraAngle.radius * Math.cos(cameraAngle.phi);
+            camera.position.z = cameraAngle.radius * Math.sin(cameraAngle.phi) * Math.cos(cameraAngle.theta);
+            camera.lookAt(0, 0, 0.5);
+        }
+
+        function resetCamera() {
+            cameraAngle = { theta: 0.35, phi: 0.82, radius: 25 };
+            updateCameraPosition();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Décalage des 4 pions sur une même case pour éviter qu'ils ne se chevauchent
+        const PAWN_OFFSETS = [
+            { x: -0.48, z: -0.48 },
+            { x:  0.48, z: -0.48 },
+            { x: -0.48, z:  0.48 },
+            { x:  0.48, z:  0.48 }
+        ];
+
+        function placePawnInstant(playerIdx, tileIdx) {
+            const clamped = Math.max(0, Math.min(BOARD_SIZE - 1, tileIdx));
+            players[playerIdx].pos = clamped;
+            const basePos = tilePositions3D[clamped];
+            const off = PAWN_OFFSETS[playerIdx];
+            players[playerIdx].mesh.position.set(basePos.x + off.x, 0.2, basePos.z + off.z);
+        }
+
+        // Animation fluide de saut case par case
+        function animatePawnStepByStep(playerIdx, deltaSteps, onComplete) {
+            const p = players[playerIdx];
+            const targetPos = Math.max(0, Math.min(BOARD_SIZE - 1, p.pos + deltaSteps));
+            const direction = targetPos >= p.pos ? 1 : -1;
+            const totalHops = Math.abs(targetPos - p.pos);
+
+            if (totalHops === 0) {
+                if (onComplete) onComplete();
+                return;
+            }
+
+            let hopsDone = 0;
+
+            function doSingleHop() {
+                if (hopsDone >= totalHops) {
+                    updatePlayersUI();
+                    if (onComplete) onComplete();
+                    return;
+                }
+
+                const startVec = p.mesh.position.clone();
+                const nextTileIdx = p.pos + direction;
+                p.pos = nextTileIdx;
+                const destTile = tilePositions3D[nextTileIdx];
+                const off = PAWN_OFFSETS[playerIdx];
+                const endVec = new THREE.Vector3(destTile.x + off.x, 0.2, destTile.z + off.z);
+
+                SFX.step();
+                const duration = 260;
+                const startTime = performance.now();
+
+                function stepFrame(now) {
+                    const t = Math.min(1, (now - startTime) / duration);
+                    p.mesh.position.lerpVectors(startVec, endVec, t);
+                    // Parabole de saut
+                    p.mesh.position.y = 0.2 + Math.sin(t * Math.PI) * 0.95;
+
+                    if (t < 1) {
+                        requestAnimationFrame(stepFrame);
+                    } else {
+                        p.mesh.position.copy(endVec);
+                        hopsDone++;
+                        updatePlayersUI();
+                        doSingleHop();
+                    }
+                }
+                requestAnimationFrame(stepFrame);
+            }
+
+            doSingleHop();
+        }
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            // Légère rotation de l'engrenage du pion 3 et pulsation douce du pion actif
+            const time = performance.now() * 0.003;
+            players.forEach((p, idx) => {
+                if (!p.mesh) return;
+                if (idx === currentPlayerIdx && !isBusy) {
+                    p.mesh.rotation.y = Math.sin(time) * 0.35;
+                } else {
+                    p.mesh.rotation.y *= 0.9;
+                }
+            });
+            renderer.render(scene, camera);
+        }
+
+        /**
+         * ============================================================================
+         * 6. LOGIQUE DU JEU, DÉ 3D, CARTES & CHRONOMÈTRE DE 20 SECONDES
+         * ============================================================================
+         */
+        function startGame() {
+            initAudio();
+            // Récupération des prénoms saisis
+            for (let i = 0; i < 4; i++) {
+                const val = document.getElementById(`p${i + 1}-name`).value.trim();
+                if (val) players[i].name = val;
+            }
+            document.getElementById('setup-modal').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+            updatePlayersUI();
+            setStatus(`C'est à ${players[0].name} de lancer le dé !`);
+        }
+
+        function updatePlayersUI() {
+            const panel = document.getElementById('players-panel');
+            panel.innerHTML = '';
+
+            players.forEach((p, idx) => {
+                const isActive = idx === currentPlayerIdx;
+                const card = document.createElement('div');
+                card.className = `flex-shrink-0 w-56 sm:w-full bg-slate-900/90 backdrop-blur-md rounded-2xl p-3 border-2 transition ${
+                    isActive ? 'active-player-card border-white bg-slate-800/95' : 'border-slate-700/80 opacity-85'
+                }`;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div class="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style="background:${p.colorHex}33; border: 1px solid ${p.colorHex}">
+                                ${p.icon}
+                            </div>
+                            <div class="truncate">
+                                <div class="font-extrabold text-sm text-white truncate flex items-center gap-1.5">
+                                    ${p.name}
+                                    ${p.skipTurn ? '<span class="text-[10px] bg-red-500/30 text-red-300 px-1.5 py-0.5 rounded">⏸️ Tour sauté</span>' : ''}
+                                </div>
+                                <div class="text-[11px] text-slate-400 truncate">${p.role}</div>
+                            </div>
+                        </div>
+                        <div class="text-right flex-shrink-0">
+                            <div class="text-xs font-black text-amber-400">${p.pap} PAP</div>
+                            <div class="text-[11px] font-bold text-slate-300">Case ${p.pos + 1}/40</div>
+                        </div>
+                    </div>
+                    <!-- Barre de progression du stage -->
+                    <div class="w-full h-1.5 bg-slate-800 rounded-full mt-2 overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-300" style="width: ${((p.pos + 1) / 40) * 100}%; background:${p.colorHex}"></div>
+                    </div>
+                `;
+                panel.appendChild(card);
+            });
+
+            // Mise à jour du panneau d'action bas droite
+            const activeP = players[currentPlayerIdx];
+            document.getElementById('turn-player-name').innerHTML = `<span style="color:${activeP.colorHex}">●</span> ${activeP.name}`;
+            const badge = document.getElementById('turn-player-badge');
+            badge.textContent = activeP.icon;
+            badge.style.backgroundColor = `${activeP.colorHex}33`;
+            badge.style.border = `1px solid ${activeP.colorHex}`;
+
+            document.getElementById('roll-btn').disabled = isBusy;
+        }
+
+        function setStatus(msg) {
+            document.getElementById('status-banner').textContent = msg;
+        }
+
+        // Rotations CSS pour afficher la bonne face du dé 3D
+        const DICE_ROTATIONS = {
+            1: 'rotateX(0deg) rotateY(0deg)',
+            2: 'rotateX(0deg) rotateY(-90deg)',
+            3: 'rotateX(0deg) rotateY(180deg)',
+            4: 'rotateX(0deg) rotateY(90deg)',
+            5: 'rotateX(-90deg) rotateY(0deg)',
+            6: 'rotateX(90deg) rotateY(0deg)'
+        };
+
+        function handleRollDice() {
+            if (isBusy) return;
+            const p = players[currentPlayerIdx];
+
+            // Vérification si le joueur doit passer son tour suite à un malus
+            if (p.skipTurn) {
+                p.skipTurn = false;
+                setStatus(`⏸️ ${p.name} passe son tour suite à un malus précédent.`);
+                SFX.wrong();
+                updatePlayersUI();
+                setTimeout(() => nextTurn(false), 1600);
+                return;
+            }
+
+            isBusy = true;
+            updatePlayersUI();
+            SFX.dice();
+
+            const rollResult = Math.floor(Math.random() * 6) + 1;
+            const cube = document.getElementById('dice-cube');
+            // Tours supplémentaires pour un effet de lancer réaliste
+            cube.style.transform = `rotateX(720deg) rotateY(720deg)`;
+
+            setTimeout(() => {
+                cube.style.transform = DICE_ROTATIONS[rollResult];
+                setStatus(`🎲 ${p.name} fait un ${rollResult} ! Déplacement en cours...`);
+
+                setTimeout(() => {
+                    animatePawnStepByStep(currentPlayerIdx, rollResult, () => {
+                        evaluateTileEffect();
+                    });
+                }, 450);
+            }, 350);
+        }
+
+        function evaluateTileEffect() {
+            const p = players[currentPlayerIdx];
+
+            // Victoire si case 40 atteinte
+            if (p.pos >= BOARD_SIZE - 1) {
+                triggerVictory();
+                return;
+            }
+
+            const tileType = TILE_PATTERN[p.pos];
+
+            if (tileType === "event") {
+                openEventModal();
+            } else if (["organisation", "communication", "posture", "securite", "tuteur"].includes(tileType)) {
+                openQuestionModal(tileType);
+            } else {
+                nextTurn(false);
+            }
+        }
+
+        // --- GESTION DES CARTES QUESTIONS (CHRONO 20 SECONDES) ---
+        function pickQuestionForTheme(theme) {
+            let candidates = QUESTIONS_DB.map((q, idx) => ({ q, idx }))
+                .filter(item => item.q.theme === theme && !usedQuestionIndices.has(item.idx));
+
+            // Si toutes les cartes de ce thème ont été tirées, on réinitialise le paquet du thème
+            if (candidates.length === 0) {
+                QUESTIONS_DB.forEach((q, idx) => {
+                    if (q.theme === theme) usedQuestionIndices.delete(idx);
+                });
+                candidates = QUESTIONS_DB.map((q, idx) => ({ q, idx })).filter(item => item.q.theme === theme);
+            }
+
+            const picked = candidates[Math.floor(Math.random() * candidates.length)];
+            usedQuestionIndices.add(picked.idx);
+            return picked.q;
+        }
+
+        function openQuestionModal(theme) {
+            const themeInfo = THEMES[theme];
+            activeQuestion = pickQuestionForTheme(theme);
+
+            const modal = document.getElementById('question-modal');
+            const cardBox = document.getElementById('question-card-box');
+            const header = document.getElementById('q-header');
+
+            cardBox.className = `bg-slate-900 border-2 ${themeInfo.borderCol} rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl my-auto`;
+            header.className = `px-6 py-4 flex items-center justify-between ${themeInfo.headerBg} text-white`;
+
+            document.getElementById('q-icon').textContent = themeInfo.icon;
+            document.getElementById('q-category').textContent = themeInfo.label;
+            document.getElementById('q-title').textContent = activeQuestion.title;
+            document.getElementById('q-situation').textContent = activeQuestion.situation;
+
+            // Masquer le feedback précédent
+            document.getElementById('q-feedback').classList.add('hidden');
+
+            // Générer les 3 boutons de choix
+            const choicesDiv = document.getElementById('q-choices');
+            choicesDiv.innerHTML = '';
+            activeQuestion.choices.forEach((choiceText, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full text-left bg-slate-800 hover:bg-slate-750 border-2 border-slate-700 hover:border-slate-500 rounded-2xl p-4 text-sm sm:text-base font-semibold text-white transition cursor-pointer flex items-center gap-3";
+                btn.innerHTML = `<span class="flex-1">${choiceText}</span>`;
+                btn.onclick = () => submitAnswer(idx);
+                choicesDiv.appendChild(btn);
+            });
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            // Démarrage du compte à rebours de 20 secondes
+            startQuestionTimer();
+        }
+
+        function startQuestionTimer() {
+            clearInterval(questionTimerInterval);
+            timeLeft = 20;
+            updateTimerVisuals();
+
+            questionTimerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerVisuals();
+
+                if (timeLeft <= 5 && timeLeft > 0) {
+                    SFX.tick();
+                }
+
+                if (timeLeft <= 0) {
+                    clearInterval(questionTimerInterval);
+                    submitAnswer(-1); // Temps écoulé = mauvaise réponse
+                }
+            }, 1000);
+        }
+
+        function updateTimerVisuals() {
+            const timerText = document.getElementById('timer-text');
+            const timerBar = document.getElementById('timer-bar');
+            timerText.textContent = `${timeLeft}s`;
+            const pct = (timeLeft / 20) * 100;
+            timerBar.style.width = `${pct}%`;
+
+            if (timeLeft > 10) {
+                timerBar.className = "h-full bg-emerald-400 transition-all duration-300";
+                timerText.className = "text-xl sm:text-2xl font-black tabular-nums text-white";
+            } else if (timeLeft > 5) {
+                timerBar.className = "h-full bg-amber-400 transition-all duration-300";
+                timerText.className = "text-xl sm:text-2xl font-black tabular-nums text-amber-300";
+            } else {
+                timerBar.className = "h-full bg-red-500 transition-all duration-300";
+                timerText.className = "text-xl sm:text-2xl font-black tabular-nums text-red-400 animate-pulse";
+            }
+        }
+
+        let pendingPenaltyMove = 0;
+
+        function submitAnswer(selectedIdx) {
+            clearInterval(questionTimerInterval);
+            const isCorrect = selectedIdx === activeQuestion.correct;
+            const p = players[currentPlayerIdx];
+
+            // Désactiver et colorer les choix
+            const buttons = document.getElementById('q-choices').querySelectorAll('button');
+            buttons.forEach((btn, idx) => {
+                btn.disabled = true;
+                btn.classList.remove('cursor-pointer', 'hover:border-slate-500');
+                if (idx === activeQuestion.correct) {
+                    btn.className = "w-full text-left bg-emerald-950/80 border-2 border-emerald-400 rounded-2xl p-4 text-sm sm:text-base font-bold text-emerald-200 flex items-center justify-between";
+                    btn.innerHTML += `<span class="text-xl ml-2">✅</span>`;
+                } else if (idx === selectedIdx) {
+                    btn.className = "w-full text-left bg-red-950/80 border-2 border-red-400 rounded-2xl p-4 text-sm sm:text-base font-bold text-red-200 flex items-center justify-between";
+                    btn.innerHTML += `<span class="text-xl ml-2">❌</span>`;
+                } else {
+                    btn.classList.add('opacity-45');
+                }
+            });
+
+            const fbBox = document.getElementById('q-feedback');
+            const fbTitle = document.getElementById('feedback-title');
+            const fbExp = document.getElementById('feedback-explanation');
+            const fbReward = document.getElementById('feedback-reward');
+
+            fbBox.classList.remove('hidden');
+            fbExp.textContent = activeQuestion.explanation;
+
+            if (isCorrect) {
+                SFX.correct();
+                p.pap += 1;
+                pendingPenaltyMove = 0;
+                fbBox.className = "mt-5 rounded-2xl p-4 border-2 border-emerald-500/60 bg-emerald-950/40";
+                fbTitle.innerHTML = "✅ Excellente attitude professionnelle !";
+                fbTitle.className = "flex items-center gap-2 font-extrabold text-base sm:text-lg mb-1.5 text-emerald-300";
+                fbReward.textContent = "Gain : +1 PAP";
+                fbReward.className = "text-xs font-extrabold uppercase px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+            } else {
+                SFX.wrong();
+                p.pap = Math.max(0, p.pap - 1);
+                pendingPenaltyMove = -1;
+                fbBox.className = "mt-5 rounded-2xl p-4 border-2 border-red-500/60 bg-red-950/40";
+                fbTitle.innerHTML = selectedIdx === -1 ? "⏱️ Temps écoulé (20s dépassées) !" : "❌ Comportement inadapté en entreprise";
+                fbTitle.className = "flex items-center gap-2 font-extrabold text-base sm:text-lg mb-1.5 text-red-300";
+                fbReward.textContent = "Sanction : -1 PAP & Recul d'1 case";
+                fbReward.className = "text-xs font-extrabold uppercase px-3 py-1 rounded-lg bg-red-500/20 text-red-300 border border-red-500/40";
+            }
+
+            updatePlayersUI();
+        }
+
+        function closeQuestionModal() {
+            const modal = document.getElementById('question-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+
+            if (pendingPenaltyMove !== 0) {
+                const move = pendingPenaltyMove;
+                pendingPenaltyMove = 0;
+                animatePawnStepByStep(currentPlayerIdx, move, () => nextTurn(false));
+            } else {
+                nextTurn(false);
+            }
+        }
+
+        // --- GESTION DES CARTES BONUS / MALUS ---
+        function openEventModal() {
+            activeEvent = EVENTS_DB[Math.floor(Math.random() * EVENTS_DB.length)];
+            const isBonus = activeEvent.type === "bonus";
+
+            if (isBonus) SFX.bonus(); else SFX.wrong();
+
+            const box = document.getElementById('event-card-box');
+            const header = document.getElementById('event-header');
+            box.className = `bg-slate-900 border-2 ${isBonus ? 'border-emerald-400' : 'border-red-500'} rounded-3xl max-w-md w-full overflow-hidden shadow-2xl text-center`;
+            header.className = `py-5 px-6 text-white ${isBonus ? 'bg-gradient-to-r from-emerald-600 to-teal-600' : 'bg-gradient-to-r from-red-600 to-rose-700'}`;
+
+            document.getElementById('event-icon').textContent = activeEvent.icon;
+            document.getElementById('event-badge').textContent = isBonus ? "CARTE BONUS" : "CARTE MALUS";
+            document.getElementById('event-title').textContent = activeEvent.title;
+            document.getElementById('event-desc').textContent = activeEvent.desc;
+            document.getElementById('event-effect-box').textContent = activeEvent.effectText;
+            document.getElementById('event-effect-box').className = `bg-slate-800 border border-slate-700 rounded-2xl py-3 px-4 font-extrabold text-lg mb-6 ${isBonus ? 'text-emerald-300' : 'text-red-300'}`;
+
+            const modal = document.getElementById('event-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function applyEventAndClose() {
+            const modal = document.getElementById('event-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+
+            const p = players[currentPlayerIdx];
+            p.pap = Math.max(0, p.pap + activeEvent.pap);
+            if (activeEvent.skipTurn) p.skipTurn = true;
+            const extraTurn = activeEvent.extraTurn;
+            const moveSteps = activeEvent.move;
+
+            updatePlayersUI();
+
+            if (moveSteps !== 0) {
+                animatePawnStepByStep(currentPlayerIdx, moveSteps, () => {
+                    if (p.pos >= BOARD_SIZE - 1) {
+                        triggerVictory();
+                    } else {
+                        nextTurn(extraTurn);
+                    }
+                });
+            } else {
+                nextTurn(extraTurn);
+            }
+        }
+
+        // --- PASSAGE AU TOUR SUIVANT & VICTOIRE ---
+        function nextTurn(keepSamePlayer) {
+            if (!keepSamePlayer) {
+                currentPlayerIdx = (currentPlayerIdx + 1) % players.length;
+            }
+            isBusy = false;
+            updatePlayersUI();
+            const p = players[currentPlayerIdx];
+            setStatus(keepSamePlayer
+                ? `🎉 Bonus Rejouer ! ${p.name} lance à nouveau le dé !`
+                : `C'est au tour de ${p.name} (${p.role}). Lancez le dé !`
+            );
+        }
+
+        function triggerVictory() {
+            SFX.victory();
+            isBusy = true;
+
+            // Bonus de +3 PAP pour le premier stagiaire à franchir la ligne d'arrivée
+            players[currentPlayerIdx].pap += 3;
+            updatePlayersUI();
+
+            // Classement final : score combiné (Case atteinte + PAP * 2)
+            const ranked = [...players].sort((a, b) => {
+                const scoreA = (a.pos + 1) + a.pap * 2;
+                const scoreB = (b.pos + 1) + b.pap * 2;
+                return scoreB - scoreA;
+            });
+
+            const medals = ["🥇", "🥈", "🥉", "🎖️"];
+            const podiumList = document.getElementById('podium-list');
+            podiumList.innerHTML = '';
+
+            ranked.forEach((p, idx) => {
+                const totalScore = (p.pos + 1) + p.pap * 2;
+                const row = document.createElement('div');
+                row.className = `flex items-center justify-between p-3.5 rounded-2xl border ${
+                    idx === 0 ? 'bg-amber-500/15 border-amber-400' : 'bg-slate-800/90 border-slate-700'
+                }`;
+                row.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${medals[idx]}</span>
+                        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style="background:${p.colorHex}33; border:1px solid ${p.colorHex}">
+                            ${p.icon}
+                        </div>
+                        <div>
+                            <div class="font-extrabold text-white text-base">${p.name}</div>
+                            <div class="text-xs text-slate-400">Case ${p.pos + 1}/40 • <strong>${p.pap} PAP</strong></div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs uppercase text-slate-400 block font-bold">Score Pro</span>
+                        <span class="text-lg font-black text-amber-300">${totalScore} pts</span>
+                    </div>
+                `;
+                podiumList.appendChild(row);
+            });
+
+            const vModal = document.getElementById('victory-modal');
+            vModal.classList.remove('hidden');
+            vModal.classList.add('flex');
+        }
+
+        // Initialisation de la scène 3D au chargement de la page
+        window.onload = function () {
+            init3DScene();
+        };
+    </script>
+</body>
+</html>
