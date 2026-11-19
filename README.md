@@ -290,5 +290,3 @@ ESPRIT D'ÉQUIPE
 Vous avez aidé un autre stagiaire qui prenait du retard sur ses objectifs.
 EFFET : Vous et le joueur de votre choix gagnez +1 PAP !
 -------------------------------------------------------------------
-
-```
